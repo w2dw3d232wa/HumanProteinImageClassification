@@ -23,7 +23,7 @@ dataset = dataset.prefetch(tf.data.AUTOTUNE)
 # 建立一個權重字典，預設所有胞器答錯的懲罰權重都是 1 倍
 custom_weights = {i: 1.0 for i in range(28)} 
 
-# 針對極端罕見的 16 號特徵，將答錯的懲罰放大 50 倍
+# 針對極端罕見的 16  Cytokinetic bridge (細胞質分裂橋)號特徵，將答錯的懲罰放大 50 倍
 custom_weights[16] = 50.0  
 
 # 訓練時開啟權重懲罰機制
