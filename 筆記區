@@ -1,0 +1,38 @@
+## 🧠 給未來的自己：核心程式碼筆記 (Code Walkthrough)
+*這區塊紀錄了本專案中幾項關鍵的底層運作邏輯，作為未來回顧與知識遷移的參考。*
+
+### 1. 多重標籤轉換 (Multi-hot Encoding)
+**👉 為什麼要寫這段？** 因為一個蛋白質可能「同時」出現在細胞核與內質網中。我們必須把字串（如 `"16 0"`）轉成 AI 看得懂的 28 維機率陣列。
+```python
+def parse_labels(label_str):
+    labels = np.zeros(28)              # 步驟一：先建立一個包含 28 個 0 的陣列 (代表 28 種胞器)
+    for l in str(label_str).split():   # 步驟二：把字串切開 (變成 '16' 和 '0')，並跑迴圈
+        labels[int(l)] = 1             # 步驟三：把字串轉成整數，當作「座位號碼」，把該座位的數字改成 1
+    return labels                      # 步驟四：把做好的陣列吐出來給模型
+# 把檔名陣列與標籤陣列，轉換成 TensorFlow 的 Dataset 物件
+dataset = tf.data.Dataset.from_tensor_slices((image_ids, labels))
+
+# map: 套用我們自己寫好的圖片讀取函數 (多執行緒加速)
+dataset = dataset.map(tf_load_image, num_parallel_calls=tf.data.AUTOTUNE)
+
+# batch: 設定輸送帶每次只裝載 16 張圖片送進 GPU，算完就丟掉換下一批
+dataset = dataset.batch(16)
+
+# prefetch: 當 GPU 正在訓練這 16 張圖時，叫 CPU 提早去硬碟準備下 16 張圖，節省時間
+dataset = dataset.prefetch(tf.data.AUTOTUNE)
+# 建立一個權重字典，預設所有胞器答錯的懲罰權重都是 1 倍
+custom_weights = {i: 1.0 for i in range(28)} 
+
+# 針對極端罕見的 16 號特徵，將答錯的懲罰放大 50 倍
+custom_weights[16] = 50.0  
+
+# 訓練時開啟權重懲罰機制
+history = model_hpa.fit(dataset, epochs=5, class_weight=custom_weights)
+# 模型最後一層 sigmoid 輸出的是「機率」(0.0 ~ 1.0)
+predictions = model_hpa.predict(...)
+pred_probs = predictions[0]
+
+# 我們將及格線 (Threshold) 從預設的 0.5 調降至 0.3
+# 只要模型有 30% 的把握，我們就將該胞器列入預測結果中
+threshold = 0.3
+pred_locations = [label for i, prob in enumerate(pred_probs) if prob > threshold]
